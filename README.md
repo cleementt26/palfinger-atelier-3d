@@ -41,7 +41,8 @@ La configuration Vite utilise `base: "./"`, et les images ainsi que le favicon o
 - `index.html`, `main.tsx` : page française et point d’entrée React.
 - `components/crane/` : atelier et visualiseur 3D.
 - `lib/crane-kinematics.ts` : géométrie, fermetures des renvois et moteur de mouvement.
-- `lib/crane-model.ts`, `lib/crane-data.ts` : modèle Three.js et données documentées.
+- `lib/crane-model.ts`, `lib/crane-details.ts` : assemblage Three.js, profils des pièces et flexibles.
+- `lib/crane-data.ts` : données constructeur documentées.
 - `components/ui/`, `lib/utils.ts` : quatre composants d’interface et utilitaires.
 - `app/globals.css`, `vendor/` : styles et dépendance CSS locale avec sa licence.
 - `public/brand/`, `public/reference/` : logo officiel et image de référence.
@@ -63,6 +64,23 @@ La configuration Vite utilise `base: "./"`, et les images ainsi que le favicon o
 - Sur téléphone, la vue reste visible au-dessus des commandes pendant le défilement.
 - Rendu WebGL avec ombres, secours 3D SVGRenderer si WebGL est indisponible. Rendu au repos suspendu et mises à jour de mesures limitées aux changements.
 
+## Géométrie et rendu
+
+La silhouette et les détails visibles s’appuient sur la photo constructeur repliée, les vues de chantier et le dessin d’encombrement de la PK 53002 SH.
+
+- Bras à sections chanfreinées et effilées ; bras secondaire et six télescopes creux, avec leurs colliers et patins de guidage.
+- Flasques séparées et percées, biellettes profilées, bagues d’axes, rondelles et pièces de retenue aux articulations.
+- Vérins composés de fûts, culasses, joints, tiges métalliques, yeux et raccords distincts. Les corps et tiges restent rigides pendant le mouvement.
+- Colonne asymétrique, carters démontables, couronne de rotation, refroidisseur avec ventilateur et grille, distributeur et leviers de commande.
+- Poutres de stabilisation emboîtées, renforts, vérins de pied et semelles articulées représentées en position fixe.
+- Crochet à profil courbe d’épaisseur variable, émerillon et linguet de sécurité.
+- Conduites fixes et boucles de flexibles attachées aux pièces mobiles. Leurs buffers sont mis à jour sans recréer de géométrie à chaque image.
+- Logo PALFINGER officiel triangulé directement depuis le SVG fourni, lisible sur les bras dans le rendu WebGL comme dans le mode SVG.
+
+Les petites pièces fixes sont regroupées par assemblage mobile et matière pour limiter les appels de dessin. Le mode compatible allège les détails et les courbes. L’éclairage distingue les surfaces peintes, les carters et les tiges métalliques ; les ombres WebGL suivent la pose de la grue.
+
+Les épaisseurs, chanfreins, détails de fixation et tracés des flexibles restent des choix de reconstruction visuelle. Ils ne constituent pas des cotes ou un circuit hydraulique constructeur. Les photos montrent parfois des équipements optionnels : le modèle conserve ses deux articulations et ses six extensions, sans ajouter de fly-jib ou de treuil à partir de ces vues.
+
 ## Ce qui est documenté et ce qui est reconstruit
 
 La brochure PALFINGER propre à la PK 53002 SH décrit Power Link Plus : le second bras dépasse de **15° le prolongement du premier** (p. 6). L’angle β est donc relatif au premier bras, et son orientation absolue est α + β. La rotation de colonne est continue. PALFINGER décrit un double système de renvoi.
@@ -79,6 +97,7 @@ Aucune charge admissible n’est calculée. La portée réelle ne se déduit pas
 - [Brochure française, Power Link Plus p. 6 et caractéristiques p. 11](https://www.palfinger.com/content/dam/palfinger/data/importdata/product-data/loader-cranes/brochures/pk-53002-sh/kphpk53002sm2fransicht.pdf)
 - [Dessin d’encombrement officiel](https://s7g10.scene7.com/is/image/palfinger/pk53002sh_drawing)
 - [Rendu constructeur utilisé comme référence](https://s7g10.scene7.com/is/image/palfinger/pk53002sh_title_2?wid=1800) — © PALFINGER, aucune licence permissive déclarée.
+- [Vue officielle déployée sur chantier](https://s7g10.scene7.com/is/image/palfingerstage/pk53002sh_galleryimage2_OK?wid=1800) — référence des sections et équipements visibles ; la photo présente aussi un treuil optionnel absent de la maquette.
 - [Site officiel PALFINGER](https://www.palfinger.com/worldwide/en.html) — logo SVG officiel extrait de l’en-tête (`a.header__logo`), conservé à l’identique dans `public/brand/palfinger-logo.svg`. Son rapport d’aspect natif est de 107 × 23 ; l’affichage conserve ce rapport sur PC et téléphone.
 
 ## Vérification
