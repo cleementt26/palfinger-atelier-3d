@@ -1,0 +1,9 @@
+node_modules/
+.cache/
+.vite/
+.pnpm-store/
+coverage/
+*.tsbuildinfo
+*.log
+.env*
+.DS_Store
