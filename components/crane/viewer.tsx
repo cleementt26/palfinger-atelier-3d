@@ -31,7 +31,8 @@ const Viewer=forwardRef<ViewerHandle,Props>(function Viewer(props,ref){
       let gpu:THREE.WebGLRenderer|undefined;
       try {gpu=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:"default"});renderer=gpu;} catch {renderer=new SVGRenderer();renderer.setQuality("low");renderer.setPrecision(2);}
       const software=!gpu;setCompatible(software);
-      if(gpu){gpu.setPixelRatio(Math.min(window.devicePixelRatio,1.75));gpu.setClearColor(0xe9edef,1);gpu.outputColorSpace=THREE.SRGBColorSpace;gpu.toneMapping=THREE.ACESFilmicToneMapping;gpu.toneMappingExposure=1.3;gpu.shadowMap.enabled=true;gpu.shadowMap.type=THREE.PCFSoftShadowMap;gpu.shadowMap.autoUpdate=false;}
+      const compactDevice=window.matchMedia("(pointer: coarse)").matches;
+      if(gpu){gpu.setPixelRatio(Math.min(window.devicePixelRatio,compactDevice?1.5:1.75));gpu.setClearColor(0xe9edef,1);gpu.outputColorSpace=THREE.SRGBColorSpace;gpu.toneMapping=THREE.ACESFilmicToneMapping;gpu.toneMappingExposure=1.05;gpu.shadowMap.enabled=true;gpu.shadowMap.type=THREE.PCFShadowMap;gpu.shadowMap.autoUpdate=false;}
       else (renderer as SVGRenderer).setClearColor(new THREE.Color(0xe9edef),1);
       const canvas=renderer.domElement;canvas.setAttribute("tabindex","0");canvas.setAttribute("aria-label","Grue Palfinger en 3D. Glissez pour tourner et utilisez les boutons pour changer de vue ou zoomer.");
       host.insertBefore(canvas,host.firstChild);
@@ -43,14 +44,35 @@ const Viewer=forwardRef<ViewerHandle,Props>(function Viewer(props,ref){
       controls.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN};
       controls.listenToKeyEvents(canvas as HTMLElement);
       let environment:THREE.WebGLRenderTarget|undefined;
-      if(gpu){const room=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(gpu);environment=pmrem.fromScene(room,.05);scene.environment=environment.texture;room.dispose();pmrem.dispose();}
-      scene.add(new THREE.HemisphereLight(0xf8fbff,0x667681,2.1));if(software)scene.add(new THREE.AmbientLight(0xffffff,.52));
-      const key=new THREE.DirectionalLight(0xfffaf0,software?.6:3.8);key.position.set(-5,15,7);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
-      Object.assign(key.shadow.camera,{left:-18,right:18,top:15,bottom:-15,near:1,far:50});key.shadow.bias=-.0003;key.shadow.normalBias=.035;key.shadow.radius=3;scene.add(key);
-      const rim=new THREE.DirectionalLight(0xc9d9ff,software?.18:1.5);rim.position.set(7,8,-7);scene.add(rim);
-      const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0xe9edef,roughness:1,metalness:0}));floor.rotation.x=-Math.PI/2;floor.position.y=-.1;floor.receiveShadow=true;if(gpu)scene.add(floor);
-      const grid=new THREE.GridHelper(software?40:80,software?40:80,0xc9d0d4,0xd7dde0);grid.position.y=-.085;(grid.material as THREE.Material).transparent=true;(grid.material as THREE.Material).opacity=software?.22:.4;(grid.material as THREE.LineBasicMaterial).color.setHex(0xbac5cc);scene.add(grid);
-      const ring=new THREE.Mesh(new THREE.RingGeometry(4.32,4.345,128),new THREE.MeshBasicMaterial({color:0xb3bdc2,side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.y=-.078;scene.add(ring);
+      if(gpu){const room=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(gpu);environment=pmrem.fromScene(room,.035);scene.environment=environment.texture;scene.environmentIntensity=.72;scene.environmentRotation.y=.35;room.dispose();pmrem.dispose();}
+      // A soft studio environment supplies metal reflections; directional light
+      // keeps the boom's facets and the separation between nested sections legible.
+      if(gpu)scene.add(new THREE.HemisphereLight(0xf2f7ff,0x5a666e,.72));
+      // SVGRenderer reads the ambient color directly and ignores its intensity.
+      if(software)scene.add(new THREE.AmbientLight(new THREE.Color().setRGB(.24,.26,.29),1));
+      const key=new THREE.DirectionalLight(0xfff5e8,software?.9:3.3);key.position.set(-10,22,14);key.castShadow=!!gpu;
+      const shadowSize=compactDevice?1024:2048;key.shadow.mapSize.set(shadowSize,shadowSize);
+      Object.assign(key.shadow.camera,{left:-18,right:18,top:18,bottom:-18,near:.5,far:75});key.shadow.bias=-.00012;key.shadow.normalBias=.018;key.shadow.radius=2;key.shadow.intensity=.85;scene.add(key,key.target);
+      const rim=new THREE.DirectionalLight(0xd8e6ff,software?.28:1.65);rim.position.set(5,10,-12);scene.add(rim);
+      const fill=new THREE.DirectionalLight(0xf3f7ff,software?.15:.45);fill.position.set(12,5,6);scene.add(fill);
+      const floorY=-.025;
+      const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0xd8dfe3,roughness:.96,metalness:0}));floor.rotation.x=-Math.PI/2;floor.position.y=floorY;floor.receiveShadow=true;if(gpu)scene.add(floor);
+      const grid=new THREE.GridHelper(software?40:80,software?40:80,0xb9c4cc,0xcbd4da);grid.position.y=floorY+.003;(grid.material as THREE.Material).transparent=true;(grid.material as THREE.Material).opacity=software?.2:.28;(grid.material as THREE.Material).depthWrite=false;scene.add(grid);
+      const ring=new THREE.Mesh(new THREE.RingGeometry(4.32,4.337,software?64:128),new THREE.MeshBasicMaterial({color:0xb7c2c9,side:THREE.DoubleSide,transparent:true,opacity:.65,depthWrite:false}));ring.rotation.x=-Math.PI/2;ring.position.y=floorY+.005;scene.add(ring);
+      // Fixed pads receive a small contact shadow even when hardware shadows
+      // are unavailable. The crane's moving cast shadow is computed separately.
+      const contacts=new THREE.Group();scene.add(contacts);
+      let contactTexture:THREE.DataTexture|undefined;
+      if(gpu){
+        const size=64,data=new Uint8Array(size*size*4);
+        for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=(y*size+x)*4,r=Math.hypot((x+.5)/size*2-1,(y+.5)/size*2-1);data[i]=data[i+1]=data[i+2]=255;data[i+3]=Math.round(255*Math.max(0,1-r)**2);}
+        contactTexture=new THREE.DataTexture(data,size,size);contactTexture.needsUpdate=true;
+        const geometry=new THREE.PlaneGeometry(1,1),material=new THREE.MeshBasicMaterial({map:contactTexture,color:0x45545e,transparent:true,opacity:.28,depthWrite:false});
+        for(const z of [-3.83,3.83]){const patch=new THREE.Mesh(geometry,material);patch.rotation.x=-Math.PI/2;patch.position.set(0,floorY+.008,z);patch.scale.set(1.45,1.45,1);contacts.add(patch);}
+      }else{
+        const geometry=new THREE.CircleGeometry(1,20),material=new THREE.MeshBasicMaterial({color:0x667680,transparent:true,opacity:.07,depthWrite:false});
+        for(const z of [-3.83,3.83])for(let i=0;i<3;i++){const patch=new THREE.Mesh(geometry,material);patch.rotation.x=-Math.PI/2;patch.position.set(0,floorY+.008+i*.001,z);patch.scale.setScalar(.64-i*.13);contacts.add(patch);}
+      }
       const crane=createCrane(software);scene.add(crane.root);
       let autoFit=true,visible=true,closeup=false,needsRender=true;let lastPart:PartId|null=null,lastMechanism=false;
       const motion=new CraneMotion(current.current.pose.deployment,current.current.pose.rotation);let width=1,height=1;
@@ -59,24 +81,55 @@ const Viewer=forwardRef<ViewerHandle,Props>(function Viewer(props,ref){
       const trailGeometry=new THREE.BufferGeometry();trailGeometry.setAttribute("position",new THREE.BufferAttribute(new Float32Array(600),3));trailGeometry.setDrawRange(0,0);
       const trail=new THREE.Line(trailGeometry,new THREE.LineBasicMaterial({color:0xbe8200,transparent:true,opacity:.7}));trail.frustumCulled=false;scene.add(trail);
       const clearTrail=()=>{trailPoints.length=0;trailGeometry.setDrawRange(0,0);needsRender=true;};
+      // Cache the visible rigid geometry once. Each pose only transforms its
+      // bounds' corners; fitting never walks the detailed mesh hierarchy.
+      // Deforming hoses refresh their own geometry.boundingBox in setPose.
+      const boundedMeshes:THREE.Mesh[]=[];
+      crane.root.traverseVisible(object=>{if(object instanceof THREE.Mesh){if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();boundedMeshes.push(object);}});
+      const worldCorners=new Float32Array(boundedMeshes.length*24);
+      const corner=new THREE.Vector3(),fitMin=new THREE.Vector3(),fitMax=new THREE.Vector3(),fitCenter=new THREE.Vector3(),fitDirection=new THREE.Vector3();
+      function cacheBounds(){
+        let index=0;
+        for(const mesh of boundedMeshes){const b=mesh.geometry.boundingBox!;
+          for(let i=0;i<8;i++){corner.set(i&1?b.max.x:b.min.x,i&2?b.max.y:b.min.y,i&4?b.max.z:b.min.z).applyMatrix4(mesh.matrixWorld);worldCorners[index++]=corner.x;worldCorners[index++]=corner.y;worldCorners[index++]=corner.z;}
+        }
+      }
+      function updateShadows(){
+        if(!gpu)return;
+        key.updateMatrixWorld();key.target.updateMatrixWorld();key.shadow.updateMatrices(key);
+        const shadowCamera=key.shadow.camera,lightUp=key.position.y/key.position.length();
+        fitMin.set(Infinity,Infinity,Infinity);fitMax.set(-Infinity,-Infinity,-Infinity);
+        let groundDepth=Infinity;
+        for(let i=0;i<worldCorners.length;i+=3){
+          corner.fromArray(worldCorners,i);const groundDistance=Math.max(0,corner.y-floorY)/lightUp;corner.applyMatrix4(shadowCamera.matrixWorldInverse);fitMin.min(corner);fitMax.max(corner);groundDepth=Math.min(groundDepth,corner.z-groundDistance);
+        }
+        // Keep the full cast shadow inside the light frustum at every slew and
+        // extension. Rounded extents and texel snapping reduce shadow shimmer.
+        const spanX=Math.max(4,Math.ceil((fitMax.x-fitMin.x+1.2)*2)/2),spanY=Math.max(4,Math.ceil((fitMax.y-fitMin.y+1.2)*2)/2);
+        const texelX=spanX/shadowSize,texelY=spanY/shadowSize;
+        const centerX=Math.round((fitMin.x+fitMax.x)/2/texelX)*texelX,centerY=Math.round((fitMin.y+fitMax.y)/2/texelY)*texelY;
+        shadowCamera.left=centerX-spanX/2;shadowCamera.right=centerX+spanX/2;shadowCamera.bottom=centerY-spanY/2;shadowCamera.top=centerY+spanY/2;
+        shadowCamera.near=Math.max(.5,-fitMax.z-1);shadowCamera.far=Math.max(shadowCamera.near+1,-groundDepth+2);shadowCamera.updateProjectionMatrix();
+        gpu.shadowMap.needsUpdate=true;
+      }
       function fit(){
         if(closeup){const target=current.current.selected==="main"?crane.markers.main.getWorldPosition(new THREE.Vector3()):crane.focus();const delta=target.clone().sub(controls.target);controls.target.copy(target);camera.position.add(delta);const aspect=width/height,half=Math.max(2.15,2.8/aspect);camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();return;}
-        const bounds=new THREE.Box3().setFromObject(crane.root);const center=bounds.getCenter(new THREE.Vector3());
-        const direction=camera.position.clone().sub(controls.target).normalize();
-        controls.target.copy(center);camera.position.copy(center.clone().addScaledVector(direction,30));camera.lookAt(center);camera.updateMatrixWorld();
-        let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-        crane.root.traverse(o=>{if(!(o instanceof THREE.Mesh))return;if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();const b=o.geometry.boundingBox!;
-          for(const x of [b.min.x,b.max.x])for(const y of [b.min.y,b.max.y])for(const z of [b.min.z,b.max.z]){const p=new THREE.Vector3(x,y,z).applyMatrix4(o.matrixWorld).applyMatrix4(camera.matrixWorldInverse);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);}
-        });
-        const shift=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0).multiplyScalar((minX+maxX)/2).add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1).multiplyScalar((minY+maxY)/2));
-        camera.position.add(shift);controls.target.add(shift);
-        const aspect=width/height;const half=Math.max((maxY-minY)/2,(maxX-minX)/(2*aspect))*1.22;
-        camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();
+        camera.lookAt(controls.target);camera.updateMatrixWorld();fitDirection.subVectors(camera.position,controls.target).normalize();
+        fitMin.set(Infinity,Infinity,Infinity);fitMax.set(-Infinity,-Infinity,-Infinity);
+        for(let i=0;i<worldCorners.length;i+=3){corner.fromArray(worldCorners,i).applyMatrix4(camera.matrixWorldInverse);fitMin.min(corner);fitMax.max(corner);}
+        fitCenter.addVectors(fitMin,fitMax).multiplyScalar(.5).applyMatrix4(camera.matrixWorld);
+        controls.target.copy(fitCenter);camera.position.copy(fitCenter).addScaledVector(fitDirection,30);camera.lookAt(fitCenter);
+        const aspect=width/height,half=Math.max((fitMax.y-fitMin.y)/2,(fitMax.x-fitMin.x)/(2*aspect),.5)*1.22;
+        camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();camera.updateMatrixWorld();
       }
+      cacheBounds();updateShadows();
       function resize(){const rect=host!.getBoundingClientRect();width=Math.max(1,rect.width);height=Math.max(1,rect.height);if(gpu)gpu.setSize(width,height,false);else (renderer as SVGRenderer).setSize(width,height);fit();needsRender=true;}
       const observer=new ResizeObserver(resize);observer.observe(host);resize();
       const visibility=new IntersectionObserver(e=>visible=e[0].isIntersecting,{rootMargin:"100px"});visibility.observe(host);
       controls.addEventListener("start",()=>{autoFit=false;closeup=false;});
+      // Wheel and pinch zoom can finish inside the input event before the next
+      // animation tick; their change event must also wake demand rendering.
+      controls.addEventListener("change",()=>{needsRender=true;});
       api.current={
         view(name){autoFit=true;closeup=name==="joint";camera.zoom=1;const direction=name==="joint"?new THREE.Vector3(0,1,25).applyAxisAngle(new THREE.Vector3(0,1,0),THREE.MathUtils.degToRad(motion.pose.rotation)):name==="side"?new THREE.Vector3(0,1,25):name==="top"?new THREE.Vector3(.001,30,.05):new THREE.Vector3(13,9,18);
           camera.position.copy(controls.target.clone().add(direction));fit();controls.update();needsRender=true;},
@@ -105,20 +158,21 @@ const Viewer=forwardRef<ViewerHandle,Props>(function Viewer(props,ref){
         if(software&&time-lastRender<65)return;lastRender=time;
         const poseKey=Object.values(motion.pose).map(x=>x.toFixed(4)).join("/");
         if(poseKey!==previousPose){
-          crane.setPose(motion.pose);previousPose=poseKey;needsRender=true;if(gpu)gpu.shadowMap.needsUpdate=true;if(autoFit)fit();
+          crane.setPose(motion.pose);cacheBounds();updateShadows();previousPose=poseKey;needsRender=true;if(autoFit)fit();
           if(p.trace){const tip=crane.tip();if(!trailPoints.length||tip.distanceTo(trailPoints.at(-1)!)>.035){trailPoints.push(tip);if(trailPoints.length>200)trailPoints.shift();const attr=trailGeometry.getAttribute("position");trailPoints.forEach((point,i)=>attr.setXYZ(i,point.x,point.y,point.z));attr.needsUpdate=true;trailGeometry.setDrawRange(0,trailPoints.length);}}
         }
         if(!p.trace&&trailPoints.length)clearTrail();trail.visible=p.trace;
         if(lastMechanism!==p.mechanism){crane.showMechanism(p.mechanism);lastMechanism=p.mechanism;needsRender=true;if(gpu)gpu.shadowMap.needsUpdate=true;}
-        if(p.selected!==lastPart){crane.select(p.selected);lastPart=p.selected;needsRender=true;}
+        if(p.selected!==lastPart){crane.select(p.selected);lastPart=p.selected;needsRender=true;if(autoFit&&closeup)fit();}
         controls.autoRotate=p.autoRotate;const cameraMoved=controls.update(software?.065:Math.max(dt,.001));
+        if(autoFit&&p.autoRotate&&cameraMoved)fit();
         for(const part of PARTS){const b=buttons.current[part.id];if(!b)continue;crane.markers[part.id].getWorldPosition(v);v.project(camera);const x=(v.x*.5+.5)*width,y=(-v.y*.5+.5)*height;
           b.style.transform=`translate(${x}px,${y}px) translate(-50%,-50%)`;b.style.visibility=p.labels&&v.z<1&&x>15&&x<width-15&&y>45&&y<height-45?"visible":"hidden";
         }
         if(needsRender||cameraMoved){renderer!.render(scene,camera);needsRender=false;}
       }
       frame();setReady(true);current.current.onReady();
-      cleanup=()=>{observer.disconnect();visibility.disconnect();canvas.removeEventListener("pointerdown",pointerDown);canvas.removeEventListener("pointerup",pointerUp);canvas.removeEventListener("webglcontextlost",contextLost);controls.dispose();crane.dispose();trailGeometry.dispose();(trail.material as THREE.Material).dispose();floor.geometry.dispose();(floor.material as THREE.Material).dispose();grid.geometry.dispose();(grid.material as THREE.Material).dispose();ring.geometry.dispose();(ring.material as THREE.Material).dispose();environment?.dispose();gpu?.dispose();canvas.remove();};
+      cleanup=()=>{observer.disconnect();visibility.disconnect();canvas.removeEventListener("pointerdown",pointerDown);canvas.removeEventListener("pointerup",pointerUp);canvas.removeEventListener("webglcontextlost",contextLost);controls.dispose();crane.dispose();trailGeometry.dispose();(trail.material as THREE.Material).dispose();floor.geometry.dispose();(floor.material as THREE.Material).dispose();grid.geometry.dispose();(grid.material as THREE.Material).dispose();ring.geometry.dispose();(ring.material as THREE.Material).dispose();const contactMesh=contacts.children[0] as THREE.Mesh;contactMesh.geometry.dispose();(contactMesh.material as THREE.Material).dispose();contactTexture?.dispose();key.shadow.dispose();environment?.dispose();gpu?.dispose();canvas.remove();};
     } catch(error){console.error("Unable to initialize 3D viewer",error);setFailure(true);if(renderer instanceof THREE.WebGLRenderer)renderer.dispose();}
     return()=>{alive=false;cancelAnimationFrame(raf);cleanup();};
   },[retry]);
