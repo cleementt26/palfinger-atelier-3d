@@ -65,17 +65,32 @@ export function createCrane(simple=false) {
   // The official supplied SVG is triangulated, preserving the actual wordmark
   // and its 107:23 proportion in WebGL and in the texture-free SVG fallback.
   const logoPaths=new SVGLoader().parse(palfingerLogoSvg).paths;
-  const logoGeometry=logoPaths.flatMap(path=>SVGLoader.createShapes(path).map(shape=>{
+  const sourceLogoShapes=logoPaths.flatMap(path=>SVGLoader.createShapes(path).map(shape=>({shape,color:path.color.getHex()})));
+  let logoFaces=sourceLogoShapes;
+  if(simple) {
+    // SVGRenderer sorts triangles by centroid depth, not with a depth buffer.
+    // A yellow polygon under the letters can therefore paint over black glyphs
+    // on a sloping arm. This exact vector mosaic has no overlapping faces:
+    // subtract each glyph contour, then restore its yellow counters as islands.
+    const background=sourceLogoShapes[0].shape.clone(),yellow=sourceLogoShapes[0].color;
+    const islands:{shape:THREE.Shape;color:number}[]=[];
+    for(const glyph of sourceLogoShapes.slice(1)) {
+      const outline=new THREE.Path();outline.curves=glyph.shape.curves.map(curve=>curve.clone());background.holes.push(outline);
+      for(const counter of glyph.shape.holes){const island=new THREE.Shape();island.curves=counter.curves.map(curve=>curve.clone());islands.push({shape:island,color:yellow});}
+    }
+    logoFaces=[{shape:background,color:yellow},...islands,...sourceLogoShapes.slice(1)];
+  }
+  const logoGeometry=logoFaces.map(({shape,color})=>{
     const geometry=new THREE.ShapeGeometry(shape,simple?3:7);geometry.translate(-53.5,-11.5,0);geometry.scale(1,-1,1);
     // Bake SVG's downward Y axis, then repair winding. Both renderers now see
     // front faces without relying on WebGL's negative-scale compensation.
     const index=geometry.getIndex()!;for(let i=0;i<index.count;i+=3){const b=index.getX(i+1);index.setX(i+1,index.getX(i+2));index.setX(i+2,b);}index.needsUpdate=true;
-    return {geometry,color:path.color.getHex()};
-  }));
+    return {geometry,color};
+  });
   logoGeometry.forEach(({geometry})=>sourceGeometries.add(geometry));
   const logo=(parent:THREE.Object3D,width:number,pos:number[],part:PartId,back=false)=>{
     const group=new THREE.Group();parent.add(group);group.position.set(...pos as [number,number,number]);if(back)group.rotation.y=Math.PI;group.name="Official PALFINGER wordmark";
-    logoGeometry.forEach(({geometry,color},i)=>{const m=mesh(group,geometry,color,part,[0,0,i*.0008],.05,.6);m.scale.set(width/107,width/107,1);});return group;
+    logoGeometry.forEach(({geometry,color},i)=>{const m=mesh(group,geometry,color,part,[0,0,simple?0:i>0?.0008:0],.05,.6);m.scale.set(width/107,width/107,1);});return group;
   };
   const label=(parent:THREE.Object3D,text:string,w:number,h:number,pos:number[],part:PartId,back=false)=>{
     if(simple)return;
@@ -85,13 +100,17 @@ export function createCrane(simple=false) {
   };
   const alignDecal=(decal:THREE.Object3D|undefined,x:number,depth:number,length:number,side:number)=>{if(!decal)return;const slope=depth*.12/(2*(length-.25));decal.position.z=side*(depth/2-slope*(x-.13)+.003);decal.rotation.y=side>0?Math.atan(slope):Math.PI-Math.atan(slope);};
 
+  // Subdivide long faces only for the compatible painter-based renderer. Small
+  // centroid spans prevent inside telescope faces painting through nearer skins.
+  const section=(length:number,hA:number,wA:number,hB:number,wB:number,wall=0)=>boxSection(length,hA,wA,hB,wB,wall,simple?Math.max(1,Math.min(28,Math.ceil(length/.14))):1);
+
   // Welded mounting traverse and distinct nested outrigger sleeves. Their visual
   // deployment stays fixed; the articulated crane's existing mechanical API is unchanged.
-  const traverse=mesh(root,boxSection(2.74,.61,1.29,.61,1.29,.065),paint.red,"base",[0,1.085,-1.37]);traverse.rotation.y=-Math.PI/2;
+  const traverse=mesh(root,section(2.74,.61,1.29,.61,1.29,.065),paint.red,"base",[0,1.085,-1.37]);traverse.rotation.y=-Math.PI/2;
   box(root,[1.45,.12,2.9],[0,1.425,0],paint.red,"base",.02);
   box(root,[1.4,.12,2.82],[0,.746,0],paint.redEdge,"base",.018);
   for(const side of [-1,1]) {
-    for(const [length,height,width,start,color] of [[1.94,.41,.88,1.12,paint.dark],[1.35,.325,.69,2.48,paint.cover]] as number[][]){const beam=mesh(root,boxSection(length,height,width,height,width,.035),color,"base",[0,1.06,side*start]);beam.rotation.y=-side*Math.PI/2;}
+    for(const [length,height,width,start,color] of [[1.94,.41,.88,1.12,paint.dark],[1.35,.325,.69,2.48,paint.cover]] as number[][]){const beam=mesh(root,section(length,height,width,height,width,.035),color,"base",[0,1.06,side*start]);beam.rotation.y=-side*Math.PI/2;}
     box(root,[.99,.048,.12],[0,1.3,side*1.42],paint.machined,"base",.004);
     box(root,[.84,.044,.13],[0,1.254,side*2.96],paint.machined,"base",.004);
     for(const face of [-1,1]) {
@@ -159,7 +178,7 @@ export function createCrane(simple=false) {
     // The longitudinal chamfers continue through the tapered side skins. A hollow
     // outer knuckle admits the six nested steel sections rather than surrounding
     // them with the previous solid extruded block.
-    const body=mesh(parent,boxSection(length-.25,rootHeight,depth,tipHeight,depth*.88,hollow?.026:0),paint.red,part,[.13,.015,0]);body.name=`${part} · chamfered welded box`;
+    const body=mesh(parent,section(length-.25,rootHeight,depth,tipHeight,depth*.88,hollow?.026:0),paint.red,part,[.13,.015,0]);body.name=`${part} · chamfered welded box`;
     for(const side of [-1,1]) {
       plate(parent,[[-.22,-.20],[-.19,.22],[.08,.32],[.60,rootHeight*.41],[.66,-rootHeight*.38],[.11,-.30]],.052,[0,0,side*(depth/2+.006)],paint.red,part,[{x:0,y:0,r:.128}]);
       plate(parent,[[length-.48,-tipHeight*.40],[length+.12,-.18],[length+.21,.05],[length+.10,.20],[length-.48,tipHeight*.40]],.052,[0,0,side*(depth*.44+.015)],paint.red,part,[{x:length,y:0,r:.1}]);
@@ -195,9 +214,9 @@ export function createCrane(simple=false) {
   for(let i=0;i<6;i++) {
     const g=new THREE.Group();g.name=`Telescopic section ${i+1} · rigid sleeve`;g.position.x=i===0?GEOMETRY.firstStageOffset:GEOMETRY.nestedStageOffset;parent.add(g);stages.push(g);
     const h=.47-i*.055,w=.405-i*.047,l=GEOMETRY.stageLength;
-    mesh(g,boxSection(l,h,w,h,w,.014),i<2?paint.dark:0x2e3337,"extensions");
+    mesh(g,section(l,h,w,h,w,.014),i<2?paint.dark:0x2e3337,"extensions");
     // Bolted collar / replaceable wear pads sit only at the sliding mouth.
-    const collar=mesh(g,boxSection(.105,h+.016,w+.014,h+.016,w+.014,.016),paint.cover,"extensions",[l-.09,0,0]);
+    const collar=mesh(g,section(.105,h+.016,w+.014,h+.016,w+.014,.016),paint.cover,"extensions",[l-.09,0,0]);
     for(const side of [-1,1]) {
       box(g,[.075,.012,w*.54],[l-.04,side*(h/2+.004),0],paint.machined,"extensions",.002);
       if(!simple&&i>0){box(g,[.045,h*.36,.010],[l+.006,0,side*(w/2+.003)],paint.cover,"extensions",.002);bolt(g,l+.004,0,side*(w/2+.012),"extensions",.013);}

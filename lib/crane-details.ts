@@ -10,20 +10,24 @@ export function chamferedSection(height:number,width:number,chamfer:number) {
 }
 
 /** A tapered, eight-face welded box boom. Optional inner skin leaves the mouth open. */
-export function boxSection(length:number,heightA:number,widthA:number,heightB:number,widthB:number,wall=0) {
+export function boxSection(length:number,heightA:number,widthA:number,heightB:number,widthB:number,wall=0,longitudinalSegments=1) {
   const positions:number[]=[],normals:number[]=[],uvs:number[]=[];
   const ring=(x:number,h:number,w:number)=>chamferedSection(h,w,Math.min(h,w)*.16).map(([y,z])=>new THREE.Vector3(x,y,z));
-  const a=ring(0,heightA,widthA),b=ring(length,heightB,widthB);
+  const count=Math.max(1,Math.round(longitudinalSegments));
+  const rings=Array.from({length:count+1},(_,i)=>{const t=i/count;return ring(length*t,THREE.MathUtils.lerp(heightA,heightB,t),THREE.MathUtils.lerp(widthA,widthB,t));});
+  const a=rings[0],b=rings[count];
   const normal=new THREE.Vector3(),edge=new THREE.Vector3(),edge2=new THREE.Vector3();
   function triangle(p:THREE.Vector3,q:THREE.Vector3,r:THREE.Vector3) {
     edge.subVectors(q,p);edge2.subVectors(r,p);normal.crossVectors(edge,edge2).normalize();
     [p,q,r].forEach((v,i)=>{positions.push(v.x,v.y,v.z);normals.push(normal.x,normal.y,normal.z);uvs.push(i===0?0:1,i===2?1:0);});
   }
   function quad(p:THREE.Vector3,q:THREE.Vector3,r:THREE.Vector3,s:THREE.Vector3) {triangle(p,q,r);triangle(p,r,s);}
-  for(let i=0;i<8;i++){const j=(i+1)%8;quad(a[i],a[j],b[j],b[i]);}
+  for(let section=0;section<count;section++)for(let i=0;i<8;i++){const j=(i+1)%8;quad(rings[section][i],rings[section][j],rings[section+1][j],rings[section+1][i]);}
   if(wall>0) {
-    const ia=ring(0,heightA-2*wall,widthA-2*wall),ib=ring(length,heightB-2*wall,widthB-2*wall);
-    for(let i=0;i<8;i++){const j=(i+1)%8;quad(ia[i],ib[i],ib[j],ia[j]);quad(a[i],ia[i],ia[j],a[j]);quad(b[i],b[j],ib[j],ib[i]);}
+    const innerRings=Array.from({length:count+1},(_,i)=>{const t=i/count;return ring(length*t,THREE.MathUtils.lerp(heightA,heightB,t)-2*wall,THREE.MathUtils.lerp(widthA,widthB,t)-2*wall);});
+    const ia=innerRings[0],ib=innerRings[count];
+    for(let section=0;section<count;section++)for(let i=0;i<8;i++){const j=(i+1)%8;quad(innerRings[section][i],innerRings[section+1][i],innerRings[section+1][j],innerRings[section][j]);}
+    for(let i=0;i<8;i++){const j=(i+1)%8;quad(a[i],ia[i],ia[j],a[j]);quad(b[i],b[j],ib[j],ib[i]);}
   } else {
     const ca=new THREE.Vector3(),cb=new THREE.Vector3(length,0,0);
     for(let i=0;i<8;i++){const j=(i+1)%8;triangle(ca,a[j],a[i]);triangle(cb,b[i],b[j]);}
